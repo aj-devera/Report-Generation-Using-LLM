@@ -12,6 +12,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Image
 from reportlab.lib.units import inch
 from reportlab.platypus.flowables import KeepTogether
+from langchain.prompts import PromptTemplate
 from datetime import datetime
 import textwrap
 import tempfile
@@ -58,11 +59,29 @@ def create_header_footer(canvas, doc):
     
     canvas.restoreState()
 
+def format_content_with_bullets(content):
+    """Format content preserving bullet points and line breaks"""
+    # Split content into lines
+    lines = content.split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if line.startswith('- '):
+            # Format bullet point with bullet character and proper spacing
+            formatted_lines.append('• ' + line[2:])
+        elif line.startswith('• '):
+            formatted_lines.append(line)
+        elif line:
+            formatted_lines.append(line)
+    
+    return formatted_lines
+
 def generate_report(input_files):
     # Initialize OpenAI LLM
     llm = ChatOpenAI(
         api_key=os.getenv('OPENAI_API_KEY'),
-        temperature=0.7,
+        temperature=0.0,
         model="gpt-3.5-turbo"
         # max_tokens=3000  # Increased token limit
     )
@@ -75,8 +94,34 @@ def generate_report(input_files):
         combined_text.extend(pages)
     
     # Create and run the summarization chain
-    chain = load_summarize_chain(llm, chain_type="map_reduce")
-    summary = chain.run(combined_text)
+    sales_map_prompt_template = """
+                      Write a summary of this chunk of text that focuses on the numerical figures of the report and its contributions.
+                      {text}
+                      """
+
+    sales_map_prompt = PromptTemplate(template=sales_map_prompt_template, input_variables=["text"])
+
+    sales_combine_prompt_template = """
+                        Write a generated sales report of the following text delimited by triple backquotes.
+                        Return your response in bullet points which focuses the numerical figures in the report such as the overall sales, generated income and revenue, etc.
+                        Limit the response to up to 15 maximum bullet points.
+                        ```{text}```
+                        BULLET POINT SUMMARY:
+                        """
+
+    sales_combine_prompt = PromptTemplate(
+        template=sales_combine_prompt_template, input_variables=["text"]
+    )
+
+    sales_map_reduce_chain = load_summarize_chain(
+        llm,
+        chain_type="map_reduce",
+        map_prompt=sales_map_prompt,
+        combine_prompt=sales_combine_prompt,
+        return_intermediate_steps=True,
+    )
+
+    sales_map_reduce_outputs = sales_map_reduce_chain({"input_documents": pages})
 
     # Instead of using a temp file, we'll save it in the GENERATED_FOLDER
     report_id = str(uuid.uuid4())
@@ -102,6 +147,17 @@ def generate_report(input_files):
         spaceAfter=12,
         firstLineIndent=24
     ))
+
+    styles.add(ParagraphStyle(
+        name='BulletPoint',
+        parent=styles['Normal'],
+        fontSize=11,
+        leading=16,
+        spaceBefore=6,
+        spaceAfter=6,
+        leftIndent=20,
+        firstLineIndent=0
+    ))
     
     styles.add(ParagraphStyle(
         name='SectionHeader',
@@ -111,25 +167,48 @@ def generate_report(input_files):
         spaceBefore=24,
         spaceAfter=12
     ))
+
+    styles.add(ParagraphStyle(
+        name='BodyHeader',
+        parent=styles['Heading2'],
+        fontSize=15,
+        spaceBefore=24,
+        spaceAfter=12
+    ))
     
     # Build content
     story = []
     
+    # Add Sales Analysis header
+    story.append(Paragraph('Sales Analysis', styles['BodyHeader']))
+
     # Add sections
-    sections = summary.split('\n\n')
+    sections = sales_map_reduce_outputs['output_text'].split('\n\n')
     for section in sections:
-        if section.strip():
-            # Add section header if it looks like a header
-            if len(section.split('\n')[0]) < 50:
-                story.append(Paragraph(section.split('\n')[0], styles['SectionHeader']))
-                section_content = '\n'.join(section.split('\n')[1:])
+        
+        content_lines = format_content_with_bullets(section)
+    
+        # Add each line with appropriate styling
+        for line in content_lines:
+            if line.startswith('•'):
+                # Use bullet point style for bullet points
+                story.append(Paragraph(line, styles['BulletPoint']))
             else:
-                section_content = section
+                # Use regular style for non-bullet text
+                story.append(Paragraph(line, styles['CustomBody']))
+
+        # if section.strip():
+        #     # Add section header if it looks like a header
+        #     if len(section.split('\n')[0]) < 50:
+        #         story.append(Paragraph(section.split('\n')[0], styles['SectionHeader']))
+        #         section_content = '\n'.join(section.split('\n')[1:])
+        #     else:
+        #         section_content = section
                 
-            # Wrap long paragraphs
-            wrapped_content = textwrap.fill(section_content, width=80)
-            story.append(Paragraph(wrapped_content, styles['CustomBody']))
-            story.append(Spacer(1, 12))
+        #     # Wrap long paragraphs
+        #     wrapped_content = textwrap.fill(section_content, width=80)
+        #     story.append(Paragraph(wrapped_content, styles['CustomBody']))
+        #     story.append(Spacer(1, 12))
     
     # Build PDF
     doc.build(story, onFirstPage=create_header_footer, onLaterPages=create_header_footer)
