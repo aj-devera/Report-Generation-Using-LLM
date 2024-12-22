@@ -1,6 +1,6 @@
-# app.py
 from flask import Flask, request, render_template, send_file, url_for, redirect
 from werkzeug.utils import secure_filename
+from function import generate_report
 import os
 from langchain_openai import ChatOpenAI
 from langchain.document_loaders import PyPDFLoader
