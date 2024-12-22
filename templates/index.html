@@ -1,0 +1,48 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Report Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        .submit-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .submit-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Report Generator</h1>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <div class="upload-container">
+            <h2>Upload PDF Files</h2>
+            <input type="file" name="files[]" multiple accept=".pdf" class="file-input" required>
+            <p>Select multiple PDF files to generate a consolidated report</p>
+            <button type="submit" class="submit-btn">Generate Report</button>
+        </div>
+    </form>
+</body>
+</html>
