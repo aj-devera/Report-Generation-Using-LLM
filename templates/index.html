@@ -41,6 +41,14 @@
             <h2>Upload PDF Files</h2>
             <input type="file" name="files[]" multiple accept=".pdf" class="file-input" required>
             <p>Select multiple PDF files to generate a consolidated report</p>
+            <label for="report-type">Select Report Type:</label>
+            <select name="report-type" id="report-type" class="report-type" required>
+                <option value="">--Select a report type</option>
+                <option value="sales">Sales Analysis</option>
+                <option value="news">News Summary</option>
+                <option value="conten">Content Summary</option>
+            </select>
+            <p></p>
             <button type="submit" class="submit-btn">Generate Report</button>
         </div>
     </form>
