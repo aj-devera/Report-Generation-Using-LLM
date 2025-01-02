@@ -2,18 +2,6 @@ from flask import Flask, request, render_template, send_file, url_for, redirect
 from werkzeug.utils import secure_filename
 from function.generate_report import generate_report
 import os
-from langchain_openai import ChatOpenAI
-from langchain.document_loaders import PyPDFLoader
-from langchain.chains.summarize import load_summarize_chain
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Image
-from reportlab.lib.units import inch
-from reportlab.platypus.flowables import KeepTogether
-from langchain.prompts import PromptTemplate
-from datetime import datetime
 
 app = Flask(__name__)
 

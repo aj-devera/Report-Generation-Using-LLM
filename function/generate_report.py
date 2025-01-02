@@ -7,17 +7,11 @@ from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus.flowables import KeepTogether
 from datetime import datetime
-from langchain.chains import MapReduceDocumentsChain, ReduceDocumentsChain
-from langchain_text_splitters import CharacterTextSplitter
 from langchain.prompts import PromptTemplate
 from langchain.chains.summarize import load_summarize_chain
-from langchain.chains import create_retrieval_chain
 from langchain_openai import ChatOpenAI
 import os
-import textwrap
-import tempfile
 import uuid
 
 def create_header_footer(canvas, doc):
@@ -45,21 +39,28 @@ def create_header_footer(canvas, doc):
 
 def format_content_with_bullets(content):
     """Format content preserving bullet points and line breaks"""
-    # Split content into lines
-    lines = content.split('\n')
-    formatted_lines = []
-    
-    for line in lines:
-        line = line.strip()
-        if line.startswith('- '):
-            # Format bullet point with bullet character and proper spacing
-            formatted_lines.append('• ' + line[2:])
-        elif line.startswith('• '):
-            formatted_lines.append(line)
-        elif line:
-            formatted_lines.append(line)
-    
-    return formatted_lines
+    if content.startswith('- '):
+        text = '• ' + content[2:]
+    else:
+        text = content
+
+    return text
+
+def format_content_with_headings(content):
+    if content.startswith('# ') or content.startswith('## ') or content.startswith('### '):
+        heading_text = content[2:]
+        style = "Subsection"
+    elif content.startswith('#### '):
+        heading_text = content[5:]
+        style = "Subsubsection"
+    elif content.startswith('- '):
+        heading_text = '• ' + content[2:]
+        style = "BulletPoint"
+    else:
+        heading_text = content
+        style = "CustomBody"
+
+    return heading_text, style
 
 def get_prompt_template(report_type):
     if report_type == "sales":
@@ -71,7 +72,11 @@ def get_prompt_template(report_type):
         map_prompt = PromptTemplate(template=map_prompt_template, input_variables=["text"])
         combine_prompt_template = """
                         Write a generated sales report of the following text delimited by triple backquotes.
-                        Return your response in bullet points which focuses the numerical figures in the report such as the overall sales, generated income and revenue, etc.
+                        Make two major sections. 
+                        The first section should focus on the numerical figures such as overall sales, total revenue, number of deaths, etc.
+                        The second section should focus on the descriptive highlights of the contributions on how these figures were met.
+                        Do not use ** to indicate bold letters or headings. Use # as an indicator for major sections.
+                        Use only one "\n" when doing a new line. Do not use two or more.
                         Limit the response to up to 15 maximum bullet points.
                         ```{text}```
                         BULLET POINT SUMMARY:
@@ -91,6 +96,8 @@ def get_prompt_template(report_type):
                                 If there are numerical figures included such as sales, revenue, or something of value, highlight this section of the context.
                                 Separate the summary by paragraphs based on topics/focal points.
                                 The summary can be long as much as half of the full context.
+                                Do not use ** to indicate bold letters or headings. Use # as an indicator for major sections and ## for minor sections.
+                                Use only one "\n" when doing a new line. Do not use two or more.
 
                                 The context for this news is delimited by the triple backquotes:
                                 ```{text}```
@@ -176,7 +183,8 @@ def generate_report(input_files, report_type):
         leading=16,
         spaceBefore=12,
         spaceAfter=12,
-        firstLineIndent=24
+        firstLineIndent=24,
+        alignment=4
     ))
 
     styles.add(ParagraphStyle(
@@ -196,50 +204,48 @@ def generate_report(input_files, report_type):
         fontSize=16,
         textColor=colors.HexColor('#1e3d59'),
         spaceBefore=24,
-        spaceAfter=12
+        spaceAfter=12,
+        alignment=1
     ))
 
     styles.add(ParagraphStyle(
-        name='BodyHeader',
-        parent=styles['Heading2'],
-        fontSize=15,
-        spaceBefore=24,
-        spaceAfter=12
+        name='Subsection',
+        parent=styles['Heading1'],
+        fontSize=13,
+        spaceBefore=12,
+        spaceAfter=6,
+        alignment=0
+    ))
+
+    styles.add(ParagraphStyle(
+        name='Subsubsection',
+        parent=styles['Heading1'],
+        fontSize=11,
+        spaceBefore=12,
+        spaceAfter=6,
+        alignment=0
     ))
     
     # Build content
     story = []
     
     # Add Sales Analysis header
-    story.append(Paragraph(title, styles['BodyHeader']))
+    story.append(Paragraph(title, styles['SectionHeader']))
 
     # Add sections
-    sections = map_reduce_outputs['output_text'].split('\n\n')
-    for section in sections:
-        
-        content_lines = format_content_with_bullets(section)
-    
-        # Add each line with appropriate styling
-        for line in content_lines:
-            if line.startswith('•'):
-                # Use bullet point style for bullet points
-                story.append(Paragraph(line, styles['BulletPoint']))
-            else:
-                # Use regular style for non-bullet text
-                story.append(Paragraph(line, styles['CustomBody']))
-
-        # if section.strip():
-        #     # Add section header if it looks like a header
-        #     if len(section.split('\n')[0]) < 50:
-        #         story.append(Paragraph(section.split('\n')[0], styles['SectionHeader']))
-        #         section_content = '\n'.join(section.split('\n')[1:])
-        #     else:
-        #         section_content = section
-                
-        #     # Wrap long paragraphs
-        #     wrapped_content = textwrap.fill(section_content, width=80)
-        #     story.append(Paragraph(wrapped_content, styles['CustomBody']))
-        #     story.append(Spacer(1, 12))
+    sections = map_reduce_outputs['output_text'].split('\n')
+    print(sections)
+    for line in sections:
+        if line.startswith('•') or line.startswith('- '):
+            # Use bullet point style for bullet points
+            formatted_line = format_content_with_bullets(line)
+            story.append(Paragraph(formatted_line, styles['BulletPoint']))
+        elif line.startswith('#'):
+            formatted_line, style = format_content_with_headings(line)
+            story.append(Paragraph(formatted_line, styles[style]))             
+        else:
+            # Use regular style for non-bullet text
+            story.append(Paragraph(line, styles['CustomBody']))
     
     # Build PDF
     doc.build(story, onFirstPage=create_header_footer, onLaterPages=create_header_footer)
